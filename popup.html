@@ -3,39 +3,56 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>GMGN Team Labels</title>
+    <title>Team Wallet Labels</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="header">
-      <div class="mark" aria-hidden="true">T</div>
+      <img class="logo" src="icons/icon128.png" alt="" width="40" height="40" />
       <div>
-        <h1>Team wallet labels</h1>
-        <p>Trader addresses on the open GMGN tab are replaced with these labels.</p>
+        <h1>Team Wallet Labels</h1>
+        <p>For GMGN Ethereum token pages</p>
       </div>
     </header>
 
-    <p id="page-hint" class="hint">Labels apply on any open gmgn.ai token page.</p>
+    <p id="page-hint" class="hint">Labels apply on GMGN Ethereum token pages.</p>
 
-    <label class="field-label" for="wallets">Team wallet list</label>
-    <textarea
-      id="wallets"
-      rows="11"
-      spellcheck="false"
-      placeholder="ETH&#10;0x000000000004444c5dc75cb358380d2e3de08a90&#10;&#10;GTA 0x6285c1c5f4a6defb7fc0908f7c766ce511d38264"
-    ></textarea>
-    <p class="help">
-      Put a label on its own line, then one address per line. Or write
-      <code>ETH 0xabc...</code> and <code>0xabc... GTA</code>. Blank lines start a new group.
-      Lines starting with # are ignored.
-    </p>
+    <div class="layout">
+      <section class="panel" aria-label="Edit a label">
+        <div class="field-row">
+          <label for="label-name">Label name <span class="example">e.g. ETH, GTA</span></label>
+        </div>
+        <input id="label-name" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="ETH" />
 
-    <div class="actions">
-      <button id="save" type="button">Save</button>
-      <p id="status" class="status" role="status"></p>
+        <div class="field-row">
+          <label for="addresses">Team wallet addresses</label>
+          <span id="address-count">0 addresses</span>
+        </div>
+        <textarea
+          id="addresses"
+          spellcheck="false"
+          placeholder="0x000000000004444c5dc75cb358380d2e3de08a90"
+        ></textarea>
+        <p class="help">Paste one full 0x Ethereum address per line. Commas and spaces also work.</p>
+        <ul id="errors" class="errors"></ul>
+
+        <div class="actions">
+          <button id="save" type="button">Save team wallet list</button>
+          <button id="clear" type="button">Clear</button>
+        </div>
+        <p id="status" class="status" role="status"></p>
+      </section>
+
+      <aside class="panel saved-panel" aria-label="Saved labels">
+        <div class="saved-head">
+          <h2>Saved labels</h2>
+          <p id="saved-summary">0 labels · 0 wallets</p>
+        </div>
+        <div id="saved-list" class="saved-list"></div>
+      </aside>
     </div>
-    <ul id="errors" class="errors"></ul>
-    <ul id="preview" class="preview"></ul>
+
+    <p class="footer">Local only · No wallet connection · No trading access</p>
 
     <script src="shared.js"></script>
     <script src="popup.js"></script>

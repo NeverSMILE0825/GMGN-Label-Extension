@@ -115,10 +115,34 @@
     return { entries: unique, errors: errors };
   }
 
+  function groupWalletList(text) {
+    var parsed = parseWalletList(text);
+    var groups = [];
+    var index = Object.create(null);
+    parsed.entries.forEach(function (entry) {
+      if (index[entry.label] == null) {
+        index[entry.label] = groups.length;
+        groups.push({ label: entry.label, addresses: [] });
+      }
+      groups[index[entry.label]].addresses.push(entry.address);
+    });
+    return { groups: groups, errors: parsed.errors };
+  }
+
+  function serializeWalletGroups(groups) {
+    return (groups || []).filter(function (group) {
+      return group && group.label && group.addresses && group.addresses.length;
+    }).map(function (group) {
+      return [group.label].concat(group.addresses).join("\n");
+    }).join("\n\n");
+  }
+
   root.GMGNTeam = {
     normalizeAddress: normalizeAddress,
     shortAddress: shortAddress,
     colorForLabel: colorForLabel,
-    parseWalletList: parseWalletList
+    parseWalletList: parseWalletList,
+    groupWalletList: groupWalletList,
+    serializeWalletGroups: serializeWalletGroups
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);
