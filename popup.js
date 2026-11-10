@@ -12,25 +12,37 @@
 
   var groups = [];
   var editingOriginal = "";
-  var memoryText = "";
+  var memoryGroups = [];
+
+  function storedGroups(data) {
+    var stored = data && data.teamWalletGroups;
+    if (stored && stored.length) return stored;
+    return GMGNTeam.groupWalletList((data && data.teamWalletsText) || "").groups;
+  }
 
   function storageGet(callback) {
     var local = globalThis.chrome && chrome.storage && chrome.storage.local;
     if (!local) {
-      callback({ teamWalletsText: memoryText });
+      callback(memoryGroups);
       return;
     }
-    local.get(["teamWalletsText"], callback);
+    local.get(["teamWalletGroups", "teamWalletsText"], function (data) {
+      callback(storedGroups(data));
+    });
   }
 
-  function storageSet(text, callback) {
+  function storageSet(nextGroups, callback) {
     var local = globalThis.chrome && chrome.storage && chrome.storage.local;
+    var payload = {
+      teamWalletGroups: nextGroups,
+      teamWalletsText: GMGNTeam.serializeWalletGroups(nextGroups)
+    };
     if (!local) {
-      memoryText = text;
+      memoryGroups = nextGroups;
       callback();
       return;
     }
-    local.set({ teamWalletsText: text }, callback);
+    local.set(payload, callback);
   }
 
   function setStatus(message, kind) {
@@ -99,6 +111,7 @@
       main.className = "saved-main";
       chip.className = "chip";
       chip.textContent = group.label;
+      chip.title = group.label;
       chip.style.color = colors.fg;
       chip.style.background = colors.bg;
       chip.style.borderColor = colors.border;
@@ -166,8 +179,7 @@
   }
 
   function persist(nextGroups, done) {
-    var text = GMGNTeam.serializeWalletGroups(nextGroups);
-    storageSet(text, function () {
+    storageSet(nextGroups, function () {
       if (globalThis.chrome && chrome.runtime && chrome.runtime.lastError) {
         setStatus(chrome.runtime.lastError.message, "warn");
         return;
@@ -237,17 +249,24 @@
     setStatus("");
   });
 
-  storageGet(function (data) {
-    groups = GMGNTeam.groupWalletList((data && data.teamWalletsText) || "").groups;
+  storageGet(function (loaded) {
+    groups = loaded || [];
     renderSaved();
     showAddressCount();
   });
 
   if (globalThis.chrome && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener(function (changes, area) {
-      if (area !== "local" || !changes.teamWalletsText) return;
-      groups = GMGNTeam.groupWalletList(changes.teamWalletsText.newValue || "").groups;
-      renderSaved();
+      if (area !== "local") return;
+      if (changes.teamWalletGroups) {
+        groups = changes.teamWalletGroups.newValue || [];
+        renderSaved();
+        return;
+      }
+      if (changes.teamWalletsText) {
+        groups = GMGNTeam.groupWalletList(changes.teamWalletsText.newValue || "").groups;
+        renderSaved();
+      }
     });
   }
 

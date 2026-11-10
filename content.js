@@ -149,17 +149,38 @@
     applyLabels();
   }
 
+  function setWalletGroups(groups) {
+    var entries = [];
+    (groups || []).forEach(function (group) {
+      if (!group || !group.label || !group.addresses) return;
+      group.addresses.forEach(function (address) {
+        var key = GMGNTeam.normalizeAddress(address);
+        if (key) entries.push([key, group.label]);
+      });
+    });
+    walletMap = new Map(entries);
+    applyLabels();
+  }
+
+  function loadStored(data) {
+    var groups = data && data.teamWalletGroups;
+    if (groups && groups.length) setWalletGroups(groups);
+    else setWalletText((data && data.teamWalletsText) || "");
+  }
+
   function start() {
     var storage = globalThis.chrome && chrome.storage && chrome.storage.local;
     if (!storage || typeof GMGNTeam === "undefined") return;
 
-    storage.get(["teamWalletsText"], function (data) {
-      setWalletText((data && data.teamWalletsText) || "");
-    });
+    storage.get(["teamWalletGroups", "teamWalletsText"], loadStored);
 
     chrome.storage.onChanged.addListener(function (changes, area) {
-      if (area !== "local" || !changes.teamWalletsText) return;
-      setWalletText(changes.teamWalletsText.newValue || "");
+      if (area !== "local") return;
+      if (changes.teamWalletGroups) {
+        setWalletGroups(changes.teamWalletGroups.newValue || []);
+        return;
+      }
+      if (changes.teamWalletsText) setWalletText(changes.teamWalletsText.newValue || "");
     });
 
     var observer = new MutationObserver(function (mutations) {

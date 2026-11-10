@@ -82,8 +82,8 @@
       var lineNo = index + 1;
 
       if (!extracted.addresses.length) {
-        if (tokens.length === 1 && tokens[0].length <= 24) {
-          currentLabel = tokens[0];
+        if (raw.length <= 32) {
+          currentLabel = raw;
           return;
         }
         errors.push({ line: lineNo, message: "No wallet address found." });
