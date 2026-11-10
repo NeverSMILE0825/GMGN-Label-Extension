@@ -139,13 +139,17 @@
     });
   }
 
-  function resetForm() {
+  function clearEditor() {
     editingOriginal = "";
     labelInput.value = "";
     addressBox.value = "";
     showAddressCount();
-    showErrors([]);
     renderSaved();
+  }
+
+  function resetForm() {
+    clearEditor();
+    showErrors([]);
   }
 
   function startEdit(label) {
@@ -203,12 +207,13 @@
       };
     }).filter(function (group) { return group.addresses.length; });
 
+    var updating = groups.some(function (group) { return sameLabel(group.label, label); }) || sameLabel(editingOriginal, label);
     next.push({ label: label, addresses: parsed.addresses.slice() });
     persist(next, function () {
-      editingOriginal = label;
+      clearEditor();
       showErrors(parsed.errors);
-      setStatus("Saved " + walletPhrase(parsed.addresses.length) + " as " + label + ". Open GMGN to see tags.", parsed.errors.length ? "warn" : "");
-      renderSaved();
+      var verb = updating ? "Updated" : "Saved";
+      setStatus(verb + " " + walletPhrase(parsed.addresses.length) + " as " + label + ". " + labelPhrase(next.length) + " saved.", parsed.errors.length ? "warn" : "");
     });
   }
 
