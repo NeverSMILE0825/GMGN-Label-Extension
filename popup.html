@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GMGN Team Labels</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="mark" aria-hidden="true">T</div>
+      <div>
+        <h1>Team wallet labels</h1>
+        <p>Trader addresses on the open GMGN tab are replaced with these labels.</p>
+      </div>
+    </header>
+
+    <p id="page-hint" class="hint">Labels apply on any open gmgn.ai token page.</p>
+
+    <label class="field-label" for="wallets">Team wallet list</label>
+    <textarea
+      id="wallets"
+      rows="11"
+      spellcheck="false"
+      placeholder="ETH&#10;0x000000000004444c5dc75cb358380d2e3de08a90&#10;&#10;GTA 0x6285c1c5f4a6defb7fc0908f7c766ce511d38264"
+    ></textarea>
+    <p class="help">
+      Put a label on its own line, then one address per line. Or write
+      <code>ETH 0xabc...</code> and <code>0xabc... GTA</code>. Blank lines start a new group.
+      Lines starting with # are ignored.
+    </p>
+
+    <div class="actions">
+      <button id="save" type="button">Save</button>
+      <p id="status" class="status" role="status"></p>
+    </div>
+    <ul id="errors" class="errors"></ul>
+    <ul id="preview" class="preview"></ul>
+
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

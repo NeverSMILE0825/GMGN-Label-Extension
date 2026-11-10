@@ -1,0 +1,14 @@
+---
+description: Push codebase updates to the GMGN Label Extension GitHub repo
+alwaysApply: true
+---
+
+# Push updates to GitHub
+
+After you change this project's code, commit that update and push it to GitHub.
+
+- Remote: `origin`
+- URL: `https://github.com/NeverSMILE0825/GMGN-Label-Extension.git`
+- Push the current branch. Do not force-push.
+
+Do this when a code change in this repo is finished. Skip the push when the tree has no new changes, and do not commit secrets.
