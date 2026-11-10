@@ -1,10 +1,14 @@
+[data-testid="table-cell-maker"] .gmgn-team-hidden {
+  display: none !important;
+}
+
 [data-testid="table-cell-maker"] .gmgn-team-label {
   display: inline-block !important;
   box-sizing: border-box !important;
   width: auto !important;
   max-width: 148px !important;
   min-width: 28px;
-  margin-left: 2px;
+  margin-left: 0;
   padding: 0 7px !important;
   height: 18px;
   border-radius: 4px;

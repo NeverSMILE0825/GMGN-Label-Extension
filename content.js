@@ -1,7 +1,7 @@
 (function () {
   var LABEL_CLASS = "gmgn-team-label";
   var walletMap = new Map();
-  var pending = 0;
+  var applying = false;
 
   function addressFromHref(href) {
     var match = String(href || "").match(/\/address\/([^/?#]+)/i);
@@ -30,78 +30,93 @@
     return null;
   }
 
-  function textElement(link) {
-    return link.querySelector(":scope > div") || link;
+  function findBadge(link) {
+    var children = link.children;
+    for (var i = 0; i < children.length; i += 1) {
+      if (children[i].classList.contains(LABEL_CLASS)) return children[i];
+    }
+    return null;
   }
 
-  function clearLabelState(textEl) {
-    textEl.classList.remove(LABEL_CLASS);
-    delete textEl.dataset.gmgnTeamLabel;
-    delete textEl.dataset.gmgnTeamOrig;
-    delete textEl.dataset.gmgnTeamKey;
-    textEl.style.removeProperty("--gmgn-team-fg");
-    textEl.style.removeProperty("--gmgn-team-bg");
-    textEl.style.removeProperty("--gmgn-team-border");
-    if (textEl.dataset.gmgnTeamTitle === "1") {
-      textEl.removeAttribute("title");
-      delete textEl.dataset.gmgnTeamTitle;
+  function addressNodes(link) {
+    var nodes = [];
+    var children = link.children;
+    for (var i = 0; i < children.length; i += 1) {
+      if (!children[i].classList.contains(LABEL_CLASS)) nodes.push(children[i]);
+    }
+    return nodes;
+  }
+
+  function isAddressText(text) {
+    var value = (text || "").trim();
+    return value.indexOf("...") !== -1 || /^0x/i.test(value);
+  }
+
+  function hideAddress(link) {
+    var nodes = addressNodes(link);
+    for (var i = 0; i < nodes.length; i += 1) {
+      var node = nodes[i];
+      if (!node.classList.contains("gmgn-team-hidden") && !isAddressText(node.textContent)) continue;
+      if (!node.classList.contains("gmgn-team-hidden")) node.classList.add("gmgn-team-hidden");
+    }
+    var loose = [];
+    for (var n = 0; n < link.childNodes.length; n += 1) {
+      var child = link.childNodes[n];
+      if (child.nodeType === 3 && isAddressText(child.textContent)) loose.push(child);
+    }
+    for (var t = 0; t < loose.length; t += 1) {
+      var span = document.createElement("span");
+      span.className = "gmgn-team-hidden";
+      loose[t].parentNode.insertBefore(span, loose[t]);
+      span.appendChild(loose[t]);
     }
   }
 
-  function restore(textEl, raw) {
-    if (!textEl.dataset.gmgnTeamLabel && !textEl.classList.contains(LABEL_CLASS)) return;
-    var showingLabel = (textEl.textContent || "").trim() === textEl.dataset.gmgnTeamLabel;
-    if (showingLabel) {
-      var sameAddress = textEl.dataset.gmgnTeamKey === GMGNTeam.normalizeAddress(raw);
-      textEl.textContent = sameAddress && textEl.dataset.gmgnTeamOrig
-        ? textEl.dataset.gmgnTeamOrig
-        : GMGNTeam.shortAddress(raw);
-    }
-    clearLabelState(textEl);
+  function showAddress(link) {
+    var badge = findBadge(link);
+    if (badge) badge.remove();
+    var hidden = link.querySelectorAll(".gmgn-team-hidden");
+    for (var i = 0; i < hidden.length; i += 1) hidden[i].classList.remove("gmgn-team-hidden");
   }
 
-  function paint(textEl, raw, key, label) {
-    var current = (textEl.textContent || "").trim();
-    if (textEl.dataset.gmgnTeamKey !== key) {
-      if (current && current !== textEl.dataset.gmgnTeamLabel) textEl.dataset.gmgnTeamOrig = current;
-      else delete textEl.dataset.gmgnTeamOrig;
-    } else if (!textEl.dataset.gmgnTeamOrig && current && current !== label) {
-      textEl.dataset.gmgnTeamOrig = current;
+  function paint(link, raw, key, label) {
+    var badge = findBadge(link);
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = LABEL_CLASS;
+      link.appendChild(badge);
     }
-
+    if (badge.textContent !== label) badge.textContent = label;
+    if (badge.dataset.gmgnTeamKey !== key) badge.dataset.gmgnTeamKey = key;
+    var title = label + " · " + raw;
+    if (badge.title !== title) badge.title = title;
     var colors = GMGNTeam.colorForLabel(label);
-    textEl.dataset.gmgnTeamKey = key;
-    textEl.dataset.gmgnTeamLabel = label;
-    if (current !== label) textEl.textContent = label;
-    textEl.classList.add(LABEL_CLASS);
-    textEl.style.setProperty("--gmgn-team-fg", colors.fg);
-    textEl.style.setProperty("--gmgn-team-bg", colors.bg);
-    textEl.style.setProperty("--gmgn-team-border", colors.border);
-    if (!textEl.getAttribute("title")) textEl.dataset.gmgnTeamTitle = "1";
-    textEl.title = label + " · " + raw;
+    if (badge.style.getPropertyValue("--gmgn-team-fg") !== colors.fg) {
+      badge.style.setProperty("--gmgn-team-fg", colors.fg);
+      badge.style.setProperty("--gmgn-team-bg", colors.bg);
+      badge.style.setProperty("--gmgn-team-border", colors.border);
+    }
+    hideAddress(link);
   }
 
   function applyLabels() {
-    var cells = document.querySelectorAll('[data-testid="table-cell-maker"]');
-    for (var i = 0; i < cells.length; i += 1) {
-      var link = findAddressLink(cells[i]);
-      if (!link) continue;
-      var raw = addressFromHref(link.getAttribute("href"));
-      if (!raw) continue;
-      var key = GMGNTeam.normalizeAddress(raw);
-      var label = walletMap.get(key) || "";
-      var textEl = textElement(link);
-      if (!label) restore(textEl, raw);
-      else paint(textEl, raw, key, label);
+    if (applying) return;
+    applying = true;
+    try {
+      var cells = document.querySelectorAll('[data-testid="table-cell-maker"]');
+      for (var i = 0; i < cells.length; i += 1) {
+        var link = findAddressLink(cells[i]);
+        if (!link) continue;
+        var raw = addressFromHref(link.getAttribute("href"));
+        if (!raw) continue;
+        var key = GMGNTeam.normalizeAddress(raw);
+        var label = walletMap.get(key) || "";
+        if (!label) showAddress(link);
+        else paint(link, raw, key, label);
+      }
+    } finally {
+      applying = false;
     }
-  }
-
-  function schedule() {
-    if (pending) return;
-    pending = window.setTimeout(function () {
-      pending = 0;
-      applyLabels();
-    }, 60);
   }
 
   function mutationMatters(mutations) {
@@ -148,11 +163,11 @@
     });
 
     var observer = new MutationObserver(function (mutations) {
-      if (mutationMatters(mutations)) schedule();
+      if (mutationMatters(mutations)) applyLabels();
     });
     observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
     window.setInterval(applyLabels, 1500);
-    schedule();
+    applyLabels();
   }
 
   start();
