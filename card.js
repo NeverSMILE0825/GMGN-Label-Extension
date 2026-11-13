@@ -21,6 +21,8 @@
   var showButton;
   var saveTimer = 0;
   var showDetails = false;
+  var sortKey = "time";
+  var sortDir = "desc";
   var totalSupply = 0;
   var tokenSymbol = "";
   var detailsTimer = 0;
@@ -49,6 +51,12 @@
     if (withSign) sign = value > 0 ? "+" : value < 0 ? "-" : "";
     else if (value < 0) sign = "-";
     return sign + text;
+  }
+
+  function formatPooled(value) {
+    if (value == null || !isFinite(value)) return "—";
+    var digits = Math.abs(value) >= 1 ? 2 : 4;
+    return trimFixed(Math.abs(value), digits) + " ETH";
   }
 
   function formatGas(value) {
@@ -168,18 +176,20 @@
   }
 
   function sideOf(event) {
-    var name = String(event || "").toLowerCase();
+    var name = String(event || "").toLowerCase().replace(/[\s_-]+/g, "");
     if (name === "buy") return "b";
     if (name === "sell") return "s";
-    if (name === "add") return "a";
-    if (name === "remove") return "r";
+    if (name === "add" || name === "addliquidity" || name === "mint" || name === "increaseliquidity") return "a";
+    if (name === "remove" || name === "removeliquidity" || name === "burn" || name === "decreaseliquidity") return "r";
     return "";
   }
 
   function ingest(history) {
     var added = 0;
     (history || []).forEach(function (row) {
-      if (!row || !row.id || trades.has(row.id)) return;
+      if (!row) return;
+      var tradeId = row.id || row.tx_hash;
+      if (!tradeId || trades.has(tradeId)) return;
       var side = sideOf(row.event);
       if (!side) return;
       var ethQuote = isEthQuote(row.quote_address);
@@ -191,7 +201,7 @@
       var maker = GMGNTeam.normalizeAddress(row.maker);
       if (!maker) return;
       var gasNative = finiteOrNull(row.gas_native);
-      trades.set(row.id, {
+      trades.set(tradeId, {
         maker: maker,
         side: side,
         amount: amount,
@@ -223,6 +233,8 @@
     trades.forEach(function (trade) {
       gasEth += trade.gasNative || 0;
       gasUsd += trade.gasUsd || 0;
+      if (trade.side === "a") adds += 1;
+      else if (trade.side === "r") removes += 1;
       if (walletMap.has(trade.maker)) return;
       unlabeled += 1;
       if (trade.eth && trade.side === "b") {
@@ -231,10 +243,6 @@
       } else if (trade.eth && trade.side === "s") {
         sellEth += trade.amount;
         sells += 1;
-      } else if (trade.side === "a") {
-        adds += 1;
-      } else if (trade.side === "r") {
-        removes += 1;
       }
     });
     return {
@@ -291,23 +299,67 @@
       '<header><span>Unlabeled trades</span><b id="gmgn-eth-detail-count"></b></header>',
       '<div class="gmgn-eth-table-wrap"><table>',
       "<thead><tr>",
-      "<th>Time</th><th>Type</th><th>MC</th><th id=\"gmgn-eth-amount-head\">Total</th><th>Total ETH</th><th>Gas</th><th>Trader</th>",
+      '<th data-sort="time">Time<i></i></th><th data-sort="type">Type<i></i></th><th data-sort="mc">MC<i></i></th>',
+      '<th data-sort="amount"><span id="gmgn-eth-amount-head">Total</span><i></i></th>',
+      '<th data-sort="eth">Total ETH<i></i></th><th data-sort="gas">Gas<i></i></th><th data-sort="trader">Trader<i></i></th>',
       "</tr></thead><tbody></tbody></table></div>",
       '<p class="gmgn-eth-detail-note" id="gmgn-eth-detail-note"></p>',
       "</div>"
     ].join("");
+    modal.querySelector("thead").addEventListener("click", function (event) {
+      var th = event.target.closest("th");
+      if (!th || !th.dataset.sort) return;
+      var key = th.dataset.sort;
+      if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+      else {
+        sortKey = key;
+        sortDir = key === "trader" || key === "type" ? "asc" : "desc";
+      }
+      paintDetails();
+    });
     document.body.appendChild(modal);
     document.body.appendChild(card);
     document.body.appendChild(showButton);
   }
 
+  function isLiquidity(trade) {
+    return trade.side === "a" || trade.side === "r";
+  }
+
+  function sortValue(trade, key) {
+    if (key === "time") return trade.ts || 0;
+    if (key === "type") return typeLabel(trade.side);
+    if (key === "mc") return trade.price != null && totalSupply ? trade.price * totalSupply : null;
+    if (key === "amount") return trade.base;
+    if (key === "eth") return trade.eth ? trade.amount : null;
+    if (key === "gas") return trade.gasUsd != null ? trade.gasUsd : null;
+    if (key === "trader") return (walletMap.get(trade.maker) || trade.maker || "").toLowerCase();
+    return null;
+  }
+
+  function compareRows(left, right) {
+    var a = sortValue(left, sortKey);
+    var b = sortValue(right, sortKey);
+    var emptyA = a == null || a === "";
+    var emptyB = b == null || b === "";
+    if (emptyA || emptyB) {
+      if (emptyA && emptyB) return (right.ts || 0) - (left.ts || 0);
+      return emptyA ? 1 : -1;
+    }
+    var diff = typeof a === "string" || typeof b === "string" ? String(a).localeCompare(String(b)) : a - b;
+    if (sortDir === "desc") diff = -diff;
+    if (!diff) return (right.ts || 0) - (left.ts || 0);
+    return diff;
+  }
+
   function detailRows() {
     var rows = [];
     trades.forEach(function (trade) {
-      if (walletMap.has(trade.maker)) return;
-      rows.push(trade);
+      if (isLiquidity(trade) || (!walletMap.has(trade.maker) && trade.eth && (trade.side === "b" || trade.side === "s"))) {
+        rows.push(trade);
+      }
     });
-    rows.sort(function (a, b) { return b.ts - a.ts; });
+    rows.sort(compareRows);
     return rows;
   }
 
@@ -326,9 +378,15 @@
     else note.textContent = "";
     var amountHead = modal.querySelector("#gmgn-eth-amount-head");
     amountHead.textContent = tokenSymbol ? "Total " + tokenSymbol : "Total";
+    modal.querySelectorAll("th").forEach(function (th) {
+      var mark = th.querySelector("i");
+      if (!mark) return;
+      mark.textContent = th.dataset.sort === sortKey ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+    });
     var html = rows.map(function (trade) {
       var kind = typeClass(trade.side);
       var href = "/eth/address/" + trade.maker;
+      var trader = walletMap.get(trade.maker) || GMGNTeam.shortAddress(trade.maker);
       var ethText = formatExactEth(trade.eth ? trade.amount : null, trade.quoteText);
       return "<tr>" +
         "<td>" + formatExactTime(trade.ts) + "</td>" +
@@ -337,7 +395,7 @@
         "<td>" + formatAmount(trade.base) + "</td>" +
         '<td class="gmgn-eth-pair"><span>' + ethText + "</span><span class=\"sub\">" + formatTotalUsd(trade.usd) + "</span></td>" +
         "<td>" + formatGasUsd(trade.gasUsd) + "</td>" +
-        '<td><a href="' + href + '">' + GMGNTeam.shortAddress(trade.maker) + "</a></td>" +
+        '<td><a href="' + href + '">' + trader + "</a></td>" +
         "</tr>";
     }).join("");
     modal.querySelector("tbody").innerHTML = html;
@@ -375,8 +433,8 @@
     var details = card.querySelector("#gmgn-eth-details");
     details.checked = showDetails;
     var pooled = card.querySelector("#gmgn-eth-pooled");
-    pooled.textContent = pooledEth == null ? "—" : formatEth(pooledEth, false) + " ETH";
-    pooled.title = poolName || "";
+    pooled.textContent = pooledEth == null ? "—" : formatPooled(pooledEth);
+    pooled.title = poolName ? poolName + " reserve" : "";
     card.querySelector("#gmgn-eth-gas").textContent = gasGwei == null ? "—" : formatGas(gasGwei) + " gwei";
     card.hidden = hidden;
     showButton.hidden = !hidden;
@@ -569,18 +627,7 @@
     }).catch(function () {});
   }
 
-  function refreshPool(gen) {
-    if (!globalThis.chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
-    chrome.runtime.sendMessage({ type: "gmgn-pooled-eth", token: token }, function (data) {
-      if (gen !== generation) return;
-      if (chrome.runtime.lastError || !data) return;
-      pooledEth = data.pooledEth == null ? null : Number(data.pooledEth);
-      poolName = data.poolName || "";
-      render();
-    });
-  }
-
-  function refreshSupply(gen) {
+  function refreshTokenInfo(gen) {
     fetch("https://gmgn.ai/api/v1/mutil_window_token_info", {
       method: "POST",
       credentials: "include",
@@ -592,9 +639,19 @@
     }).then(function (json) {
       if (gen !== generation) return;
       var row = json && json.data && json.data[0];
-      var supply = Number(row && (row.total_supply || row.circulating_supply));
+      if (!row) return;
+      var supply = Number(row.total_supply || row.circulating_supply);
       if (isFinite(supply) && supply > 0) totalSupply = supply;
-      tokenSymbol = String((row && row.symbol) || "").trim();
+      tokenSymbol = String(row.symbol || "").trim();
+      var pool = row.pool || {};
+      var quote = String(pool.quote_address || "").toLowerCase();
+      var symbol = String(pool.quote_symbol || "").toUpperCase();
+      var reserve = Number(pool.quote_reserve);
+      var ethPool = quote === NATIVE_ETH || quote === WETH || symbol === "ETH" || symbol === "WETH";
+      if (ethPool && isFinite(reserve) && reserve >= 0) {
+        pooledEth = reserve;
+        poolName = (pool.base_symbol || tokenSymbol || "Token") + " / " + (symbol || "ETH");
+      }
       render();
     }).catch(function () {});
   }
@@ -624,11 +681,10 @@
       render();
       refreshHead(gen);
       refreshGas(gen);
-      refreshPool(gen);
-      refreshSupply(gen);
+      refreshTokenInfo(gen);
       loops.push(window.setInterval(function () { refreshHead(gen); }, 2500));
       loops.push(window.setInterval(function () { refreshGas(gen); }, 12000));
-      loops.push(window.setInterval(function () { refreshPool(gen); }, 20000));
+      loops.push(window.setInterval(function () { refreshTokenInfo(gen); }, 20000));
     });
   }
 

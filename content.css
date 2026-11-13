@@ -233,6 +233,13 @@
   font-weight: 700;
   text-align: right;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.gmgn-eth-dialog th i {
+  font-style: normal;
+  color: #ff9a3c;
 }
 
 .gmgn-eth-dialog th:nth-child(1),
