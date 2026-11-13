@@ -2,7 +2,7 @@
   var NATIVE_ETH = "0x0000000000000000000000000000000000000000";
   var WETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
   var MAX_PAGES = 500;
-  var CACHE_VERSION = 3;
+  var CACHE_VERSION = 4;
   var walletMap = new Map();
   var trades = new Map();
   var hidden = false;
@@ -20,6 +20,10 @@
   var card;
   var showButton;
   var saveTimer = 0;
+  var showDetails = false;
+  var totalSupply = 0;
+  var detailsTimer = 0;
+  var modal;
 
   function tokenFromUrl() {
     var match = location.pathname.match(/\/eth\/token\/(0x[a-fA-F0-9]{40})/i);
@@ -52,6 +56,93 @@
     return value.toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
   }
 
+  function finiteOrNull(value) {
+    var number = Number(value);
+    return isFinite(number) ? number : null;
+  }
+
+  function trimFixed(value, digits) {
+    return value.toFixed(digits).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+  }
+
+  function truncateFixed(value, digits) {
+    var factor = Math.pow(10, digits);
+    var cut = Math.floor(Math.abs(value) * factor + 1e-8) / factor;
+    return trimFixed(cut, digits);
+  }
+
+  function formatAmount(value) {
+    if (value == null || !isFinite(value)) return "—";
+    var abs = Math.abs(value);
+    var sign = value < 0 ? "-" : "";
+    if (abs >= 1e9) return sign + trimFixed(abs / 1e9, 2) + "B";
+    if (abs >= 1e6) return sign + trimFixed(abs / 1e6, 1) + "M";
+    if (abs >= 1e3) return sign + trimFixed(abs / 1e3, 1) + "K";
+    if (abs >= 1) return sign + trimFixed(abs, 2);
+    if (abs === 0) return "0";
+    return sign + trimFixed(abs, 4);
+  }
+
+  function formatMc(price) {
+    if (price == null || !isFinite(price) || !totalSupply) return "—";
+    var mc = price * totalSupply;
+    var abs = Math.abs(mc);
+    var sign = mc < 0 ? "-" : "";
+    if (abs >= 1e9) return sign + "$" + truncateFixed(abs / 1e9, 2) + "B";
+    if (abs >= 1e6) return sign + "$" + truncateFixed(abs / 1e6, 2) + "M";
+    if (abs >= 1e3) return sign + "$" + truncateFixed(abs / 1e3, 0) + "K";
+    if (abs >= 1) return sign + "$" + trimFixed(abs, 2);
+    return sign + "$" + trimFixed(abs, 4);
+  }
+
+  function formatTotalUsd(value) {
+    if (value == null || !isFinite(value)) return "—";
+    var abs = Math.abs(value);
+    var sign = value < 0 ? "-" : "";
+    if (abs >= 1e6) return sign + "$" + truncateFixed(abs / 1e6, 2) + "M";
+    if (abs >= 1e3) return sign + "$" + truncateFixed(abs / 1e3, 2) + "K";
+    if (abs >= 100) return sign + "$" + truncateFixed(abs, 1);
+    if (abs >= 1) return sign + "$" + truncateFixed(abs, 2);
+    if (abs === 0) return "$0";
+    return sign + "$" + truncateFixed(abs, 4);
+  }
+
+  function formatGasUsd(value) {
+    if (value == null || !isFinite(value)) return "—";
+    var abs = Math.abs(value);
+    var sign = value < 0 ? "-" : "";
+    if (abs === 0) return "$0";
+    if (abs >= 1) return sign + "$" + trimFixed(abs, 2);
+    return sign + "$" + trimFixed(abs, 3);
+  }
+
+  function formatAge(ts) {
+    if (!ts) return "—";
+    var seconds = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+    if (seconds < 60) return seconds + "s";
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + "m";
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + "h";
+    return Math.floor(hours / 24) + "d";
+  }
+
+  function typeLabel(side) {
+    if (side === "b") return "Buy";
+    if (side === "s") return "Sell";
+    if (side === "a") return "Add";
+    if (side === "r") return "Remove";
+    return "—";
+  }
+
+  function typeClass(side) {
+    if (side === "b") return "buy";
+    if (side === "s") return "sell";
+    if (side === "a") return "add";
+    if (side === "r") return "remove";
+    return "";
+  }
+
   function isEthQuote(address) {
     var quote = String(address || "").toLowerCase();
     return quote === NATIVE_ETH || quote === WETH;
@@ -72,21 +163,26 @@
       if (!row || !row.id || trades.has(row.id)) return;
       var side = sideOf(row.event);
       if (!side) return;
-      // Liquidity adds and removes show up for every quote token. Buys and sells
-      // only belong in the ETH total when the quote is native ETH or WETH.
       var ethQuote = isEthQuote(row.quote_address);
-      if ((side === "b" || side === "s") && !ethQuote) return;
       var amount = 0;
-      if (side === "b" || side === "s") {
+      if ((side === "b" || side === "s") && ethQuote) {
         amount = Number(row.quote_amount);
         if (!isFinite(amount) || amount < 0) amount = 0;
       }
       var maker = GMGNTeam.normalizeAddress(row.maker);
       if (!maker) return;
+      var gasNative = finiteOrNull(row.gas_native);
       trades.set(row.id, {
         maker: maker,
         side: side,
-        amount: amount
+        amount: amount,
+        eth: (side === "b" || side === "s") && ethQuote,
+        base: finiteOrNull(row.base_amount),
+        usd: finiteOrNull(row.amount_usd),
+        price: finiteOrNull(row.price_usd),
+        gasNative: gasNative == null || gasNative < 0 ? 0 : gasNative,
+        gasUsd: finiteOrNull(row.gas_usd),
+        ts: Number(row.timestamp) || 0
       });
       added += 1;
     });
@@ -101,12 +197,16 @@
     var sells = 0;
     var adds = 0;
     var removes = 0;
+    var gasEth = 0;
+    var unlabeled = 0;
     trades.forEach(function (trade) {
+      gasEth += trade.gasNative || 0;
       if (walletMap.has(trade.maker)) return;
-      if (trade.side === "b") {
+      unlabeled += 1;
+      if (trade.eth && trade.side === "b") {
         buyEth += trade.amount;
         buys += 1;
-      } else if (trade.side === "s") {
+      } else if (trade.eth && trade.side === "s") {
         sellEth += trade.amount;
         sells += 1;
       } else if (trade.side === "a") {
@@ -123,7 +223,9 @@
       sells: sells,
       adds: adds,
       removes: removes,
-      trades: buys + sells
+      trades: buys + sells,
+      gasEth: gasEth,
+      unlabeled: unlabeled
     };
   }
 
@@ -138,6 +240,8 @@
       '<div class="gmgn-eth-meta" id="gmgn-eth-split"></div>',
       '<div class="gmgn-eth-meta" id="gmgn-eth-liq"></div>',
       '<div class="gmgn-eth-note" id="gmgn-eth-note">Buys add, sells subtract. Full pair history.</div>',
+      '<div class="gmgn-eth-spent">Total gas spent <b id="gmgn-eth-spent">—</b></div>',
+      '<label class="gmgn-eth-details-toggle"><input type="checkbox" id="gmgn-eth-details"> Show Details</label>',
       '<footer class="gmgn-eth-foot">',
       '<span>POOLED ETH <b id="gmgn-eth-pooled">—</b></span>',
       '<span class="gas">GAS <b id="gmgn-eth-gas">—</b></span>',
@@ -146,6 +250,9 @@
     card.querySelector(".gmgn-eth-hide").addEventListener("click", function () {
       setHidden(true);
     });
+    card.querySelector("#gmgn-eth-details").addEventListener("change", function (event) {
+      setShowDetails(event.target.checked);
+    });
     showButton = document.createElement("button");
     showButton.type = "button";
     showButton.className = "gmgn-eth-show";
@@ -153,8 +260,73 @@
     showButton.addEventListener("click", function () {
       setHidden(false);
     });
+    modal = document.createElement("section");
+    modal.className = "gmgn-eth-modal";
+    modal.hidden = true;
+    modal.innerHTML = [
+      '<div class="gmgn-eth-dialog" role="dialog" aria-label="Unlabeled trades">',
+      '<header><span>Unlabeled trades</span><b id="gmgn-eth-detail-count"></b></header>',
+      '<div class="gmgn-eth-table-wrap"><table>',
+      "<thead><tr>",
+      "<th>Age</th><th>Type</th><th>MC</th><th>Amount</th><th>Total USD</th><th>Gas</th><th>Trader</th>",
+      "</tr></thead><tbody></tbody></table></div>",
+      '<p class="gmgn-eth-detail-note" id="gmgn-eth-detail-note"></p>',
+      "</div>"
+    ].join("");
+    document.body.appendChild(modal);
     document.body.appendChild(card);
     document.body.appendChild(showButton);
+  }
+
+  function detailRows() {
+    var rows = [];
+    trades.forEach(function (trade) {
+      if (walletMap.has(trade.maker)) return;
+      rows.push(trade);
+    });
+    rows.sort(function (a, b) { return b.ts - a.ts; });
+    return rows;
+  }
+
+  function paintDetails() {
+    if (!modal) return;
+    var open = showDetails && !hidden && !!token;
+    modal.hidden = !open;
+    if (!open) return;
+    var rows = detailRows();
+    var count = modal.querySelector("#gmgn-eth-detail-count");
+    count.textContent = formatCount(rows.length) + (rows.length === 1 ? " trade" : " trades");
+    var note = modal.querySelector("#gmgn-eth-detail-note");
+    if (!rows.length && !historyDone) note.textContent = "Loading full history…";
+    else if (!rows.length) note.textContent = "No unlabeled trades.";
+    else if (!historyDone && !historyPartial) note.textContent = "Loading the rest of the pair history.";
+    else note.textContent = "";
+    var html = rows.map(function (trade) {
+      var kind = typeClass(trade.side);
+      var href = "/eth/address/" + trade.maker;
+      return "<tr>" +
+        "<td>" + formatAge(trade.ts) + "</td>" +
+        '<td class="' + kind + '">' + typeLabel(trade.side) + "</td>" +
+        "<td>" + formatMc(trade.price) + "</td>" +
+        "<td>" + formatAmount(trade.base) + "</td>" +
+        "<td>" + formatTotalUsd(trade.usd) + "</td>" +
+        "<td>" + formatGasUsd(trade.gasUsd) + "</td>" +
+        '<td><a href="' + href + '">' + GMGNTeam.shortAddress(trade.maker) + "</a></td>" +
+        "</tr>";
+    }).join("");
+    modal.querySelector("tbody").innerHTML = html;
+  }
+
+  function scheduleDetails() {
+    if (!showDetails || hidden || !token) {
+      if (modal) modal.hidden = true;
+      return;
+    }
+    if (detailsTimer) return;
+    detailsTimer = window.setTimeout(function () {
+      detailsTimer = 0;
+      paintDetails();
+    }, 200);
   }
 
   function render() {
@@ -171,12 +343,25 @@
     if (!historyDone && !historyPartial) note.textContent = "Loading full history… " + formatCount(seenTrades) + " trades";
     else if (historyPartial) note.textContent = "Buys add, sells subtract. Latest " + formatCount(MAX_PAGES * 50) + " trades.";
     else note.textContent = "Buys add, sells subtract. Full pair history.";
+    var spent = card.querySelector("#gmgn-eth-spent");
+    spent.textContent = formatEth(stats.gasEth, false) + " ETH";
+    spent.title = "Gas paid by every trade in this pair, including labeled wallets.";
+    var details = card.querySelector("#gmgn-eth-details");
+    details.checked = showDetails;
     var pooled = card.querySelector("#gmgn-eth-pooled");
     pooled.textContent = pooledEth == null ? "—" : formatEth(pooledEth, false) + " ETH";
     pooled.title = poolName || "";
     card.querySelector("#gmgn-eth-gas").textContent = gasGwei == null ? "—" : formatGas(gasGwei) + " gwei";
     card.hidden = hidden;
     showButton.hidden = !hidden;
+    scheduleDetails();
+  }
+
+  function setShowDetails(next) {
+    showDetails = !!next;
+    render();
+    var local = storageArea();
+    if (local) local.set({ gmgnShowTradeDetails: showDetails });
   }
 
   function setHidden(next) {
@@ -196,7 +381,19 @@
       saveTimer = 0;
       var rows = [];
       trades.forEach(function (trade, id) {
-        rows.push([id, trade.maker, trade.side, trade.amount]);
+        rows.push([
+          id,
+          trade.maker,
+          trade.side,
+          trade.amount,
+          trade.base,
+          trade.usd,
+          trade.price,
+          trade.gasNative,
+          trade.gasUsd,
+          trade.ts,
+          trade.eth ? 1 : 0
+        ]);
       });
       var payload = {};
       payload[cacheKey()] = {
@@ -217,12 +414,24 @@
       return;
     }
     var key = cacheKey();
-    local.get([key, "gmgnEthCardHidden"], function (data) {
+    local.get([key, "gmgnEthCardHidden", "gmgnShowTradeDetails"], function (data) {
       hidden = !!(data && data.gmgnEthCardHidden);
+      showDetails = !!(data && data.gmgnShowTradeDetails);
       var cached = data && data[key];
       if (cached && cached.version === CACHE_VERSION && cached.trades) {
         cached.trades.forEach(function (row) {
-          trades.set(row[0], { maker: row[1], side: row[2], amount: row[3] });
+          trades.set(row[0], {
+            maker: row[1],
+            side: row[2],
+            amount: row[3],
+            base: row[4],
+            usd: row[5],
+            price: row[6],
+            gasNative: row[7] || 0,
+            gasUsd: row[8],
+            ts: row[9] || 0,
+            eth: !!row[10]
+          });
         });
         backfillCursor = cached.cursor || "";
         historyDone = !!cached.done;
@@ -343,6 +552,24 @@
     });
   }
 
+  function refreshSupply(gen) {
+    fetch("https://gmgn.ai/api/v1/mutil_window_token_info", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chain: "eth", addresses: [token] })
+    }).then(function (response) {
+      if (!response.ok) throw new Error("bad status");
+      return response.json();
+    }).then(function (json) {
+      if (gen !== generation) return;
+      var row = json && json.data && json.data[0];
+      var supply = Number(row && (row.total_supply || row.circulating_supply));
+      if (isFinite(supply) && supply > 0) totalSupply = supply;
+      render();
+    }).catch(function () {});
+  }
+
   function clearLoops() {
     loops.forEach(function (id) { window.clearInterval(id); });
     loops = [];
@@ -361,12 +588,14 @@
     seenTrades = 0;
     pooledEth = null;
     poolName = "";
+    totalSupply = 0;
     loadCache(function () {
       if (gen !== generation) return;
       render();
       refreshHead(gen);
       refreshGas(gen);
       refreshPool(gen);
+      refreshSupply(gen);
       loops.push(window.setInterval(function () { refreshHead(gen); }, 2500));
       loops.push(window.setInterval(function () { refreshGas(gen); }, 12000));
       loops.push(window.setInterval(function () { refreshPool(gen); }, 20000));
@@ -382,6 +611,7 @@
       clearLoops();
       if (card) card.hidden = true;
       if (showButton) showButton.hidden = true;
+      if (modal) modal.hidden = true;
       return;
     }
     boot(current);
