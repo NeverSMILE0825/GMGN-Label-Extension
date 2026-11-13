@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GMGN Team Labels",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Replace GMGN trader addresses with labels and track unlabeled ETH flow.",
   "permissions": ["storage", "unlimitedStorage", "activeTab"],
   "host_permissions": ["https://api.geckoterminal.com/*"],

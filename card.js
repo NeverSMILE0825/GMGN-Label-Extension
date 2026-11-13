@@ -2,7 +2,7 @@
   var NATIVE_ETH = "0x0000000000000000000000000000000000000000";
   var WETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
   var MAX_PAGES = 500;
-  var CACHE_VERSION = 2;
+  var CACHE_VERSION = 3;
   var walletMap = new Map();
   var trades = new Map();
   var hidden = false;
@@ -57,15 +57,30 @@
     return quote === NATIVE_ETH || quote === WETH;
   }
 
+  function sideOf(event) {
+    var name = String(event || "").toLowerCase();
+    if (name === "buy") return "b";
+    if (name === "sell") return "s";
+    if (name === "add") return "a";
+    if (name === "remove") return "r";
+    return "";
+  }
+
   function ingest(history) {
     var added = 0;
     (history || []).forEach(function (row) {
       if (!row || !row.id || trades.has(row.id)) return;
-      if (!isEthQuote(row.quote_address)) return;
-      var side = row.event === "buy" ? "b" : row.event === "sell" ? "s" : row.event === "add" ? "a" : row.event === "remove" ? "r" : "";
+      var side = sideOf(row.event);
       if (!side) return;
-      var amount = Number(row.quote_amount);
-      if (!isFinite(amount) || amount < 0) amount = 0;
+      // Liquidity adds and removes show up for every quote token. Buys and sells
+      // only belong in the ETH total when the quote is native ETH or WETH.
+      var ethQuote = isEthQuote(row.quote_address);
+      if ((side === "b" || side === "s") && !ethQuote) return;
+      var amount = 0;
+      if (side === "b" || side === "s") {
+        amount = Number(row.quote_amount);
+        if (!isFinite(amount) || amount < 0) amount = 0;
+      }
       var maker = GMGNTeam.normalizeAddress(row.maker);
       if (!maker) return;
       trades.set(row.id, {
