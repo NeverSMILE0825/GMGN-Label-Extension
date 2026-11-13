@@ -43,10 +43,7 @@
 
   function formatEth(value, withSign) {
     if (value == null || !isFinite(value)) return "—";
-    var abs = Math.abs(value);
-    var digits = abs >= 100 ? 2 : abs >= 1 ? 4 : 6;
-    var text = abs.toFixed(digits).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
-    if (text.indexOf(".") === -1) text += ".00";
+    var text = Math.abs(value).toFixed(4);
     var sign = "";
     if (withSign) sign = value > 0 ? "+" : value < 0 ? "-" : "";
     else if (value < 0) sign = "-";
@@ -104,25 +101,10 @@
     return sign + "$" + trimFixed(abs, 4);
   }
 
-  function formatTotalUsd(value) {
+  function formatUsdFixed(value) {
     if (value == null || !isFinite(value)) return "—";
-    var abs = Math.abs(value);
-    var sign = value < 0 ? "-" : "";
-    if (abs >= 1e6) return sign + "$" + truncateFixed(abs / 1e6, 2) + "M";
-    if (abs >= 1e3) return sign + "$" + truncateFixed(abs / 1e3, 2) + "K";
-    if (abs >= 100) return sign + "$" + truncateFixed(abs, 1);
-    if (abs >= 1) return sign + "$" + truncateFixed(abs, 2);
-    if (abs === 0) return "$0";
-    return sign + "$" + truncateFixed(abs, 4);
-  }
-
-  function formatGasUsd(value) {
-    if (value == null || !isFinite(value)) return "—";
-    var abs = Math.abs(value);
-    var sign = value < 0 ? "-" : "";
-    if (abs === 0) return "$0";
-    if (abs >= 1) return sign + "$" + trimFixed(abs, 2);
-    return sign + "$" + trimFixed(abs, 3);
+    var text = Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (value < 0 ? "-$" : "$") + text;
   }
 
   function formatExactTime(ts) {
@@ -134,24 +116,9 @@
     return months[date.getMonth()] + " " + date.getDate() + ", " + pad(date.getHours()) + ":" + pad(date.getMinutes()) + ":" + pad(date.getSeconds());
   }
 
-  function formatExactEth(value, raw) {
-    var text = String(raw || "").trim();
-    if (text && isFinite(Number(text))) {
-      text = text.replace(/^[+]/, "").replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
-      return text + " ETH";
-    }
+  function formatExactEth(value) {
     if (value == null || !isFinite(value)) return "—";
-    if (value === 0) return "0 ETH";
-    text = Math.abs(value).toFixed(12).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
-    return (value < 0 ? "-" : "") + text + " ETH";
-  }
-
-  function formatUsdAmount(value) {
-    if (value == null || !isFinite(value)) return "—";
-    var abs = Math.abs(value);
-    var digits = abs >= 1 ? 2 : abs >= 0.01 ? 3 : 4;
-    var text = abs.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-    return (value < 0 ? "-$" : "$") + text;
+    return (value < 0 ? "-" : "") + Math.abs(value).toFixed(4) + " ETH";
   }
 
   function typeLabel(side) {
@@ -387,14 +354,19 @@
       var kind = typeClass(trade.side);
       var href = "/eth/address/" + trade.maker;
       var trader = walletMap.get(trade.maker) || GMGNTeam.shortAddress(trade.maker);
-      var ethText = formatExactEth(trade.eth ? trade.amount : null, trade.quoteText);
+      var ethText = formatExactEth(trade.eth ? trade.amount : null);
+      var usdText = formatUsdFixed(trade.usd);
+      var totalText = "—";
+      if (ethText !== "—" && usdText !== "—") totalText = ethText + " (" + usdText + ")";
+      else if (ethText !== "—") totalText = ethText;
+      else if (usdText !== "—") totalText = "(" + usdText + ")";
       return "<tr>" +
         "<td>" + formatExactTime(trade.ts) + "</td>" +
         '<td class="' + kind + '">' + typeLabel(trade.side) + "</td>" +
         "<td>" + formatMc(trade.price) + "</td>" +
         "<td>" + formatAmount(trade.base) + "</td>" +
-        '<td class="gmgn-eth-pair"><span>' + ethText + "</span><span class=\"sub\">" + formatTotalUsd(trade.usd) + "</span></td>" +
-        "<td>" + formatGasUsd(trade.gasUsd) + "</td>" +
+        "<td>" + totalText + "</td>" +
+        "<td>" + formatUsdFixed(trade.gasUsd) + "</td>" +
         '<td><a href="' + href + '">' + trader + "</a></td>" +
         "</tr>";
     }).join("");
@@ -428,7 +400,7 @@
     else if (historyPartial) note.textContent = "Buys add, sells subtract. Latest " + formatCount(MAX_PAGES * 50) + " trades.";
     else note.textContent = "Buys add, sells subtract. Full pair history.";
     var spent = card.querySelector("#gmgn-eth-spent");
-    spent.textContent = formatEth(stats.gasEth, false) + " ETH · " + formatUsdAmount(stats.gasUsd);
+    spent.textContent = formatEth(stats.gasEth, false) + " ETH (" + formatUsdFixed(stats.gasUsd) + ")";
     spent.title = "Gas paid by every trade in this pair, including labeled wallets.";
     var details = card.querySelector("#gmgn-eth-details");
     details.checked = showDetails;
