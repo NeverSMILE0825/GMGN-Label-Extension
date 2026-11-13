@@ -9,8 +9,31 @@ function isEthQuote(pool) {
   return /\/ ETH\b|\/ WETH\b/i.test(name);
 }
 
+function notifyTrade(message) {
+  var title = message.side === "sell" ? "New sell detected!" : "New buy detected!";
+  var body = [
+    "Time: " + String(message.time || "—"),
+    "Total ETH: " + String(message.eth || "—"),
+    "Maker: " + String(message.maker || "—")
+  ].join("\n");
+  chrome.notifications.create("gmgn-alert-" + Date.now(), {
+    type: "basic",
+    iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+    title: title,
+    message: body,
+    priority: 2
+  }, function () {
+    if (chrome.runtime.lastError) return;
+  });
+}
+
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-  if (!message || message.type !== "gmgn-pooled-eth" || !message.token) return;
+  if (!message) return;
+  if (message.type === "gmgn-trade-alert") {
+    notifyTrade(message);
+    return;
+  }
+  if (message.type !== "gmgn-pooled-eth" || !message.token) return;
   var token = String(message.token).toLowerCase();
   fetch("https://api.geckoterminal.com/api/v2/networks/eth/tokens/" + token + "/pools?page=1", {
     headers: { accept: "application/json" }

@@ -23,6 +23,7 @@
   var showDetails = false;
   var sortKey = "time";
   var sortDir = "desc";
+  var alertsArmed = false;
   var totalSupply = 0;
   var tokenSymbol = "";
   var detailsTimer = 0;
@@ -152,7 +153,7 @@
   }
 
   function ingest(history) {
-    var added = 0;
+    var fresh = [];
     (history || []).forEach(function (row) {
       if (!row) return;
       var tradeId = row.id || row.tx_hash;
@@ -181,10 +182,26 @@
         ts: Number(row.timestamp) || 0,
         quoteText: (side === "b" || side === "s") && ethQuote ? String(row.quote_amount || "") : ""
       });
-      added += 1;
+      fresh.push(trades.get(tradeId));
     });
-    if (added) scheduleSave();
-    return added;
+    if (fresh.length) scheduleSave();
+    return fresh;
+  }
+
+  function notifyFresh(fresh) {
+    if (!alertsArmed || !fresh || !fresh.length) return;
+    if (!globalThis.chrome || !chrome.runtime || !chrome.runtime.sendMessage) return;
+    fresh.forEach(function (trade) {
+      if (!trade || !trade.eth || walletMap.has(trade.maker)) return;
+      if (trade.side !== "b" && trade.side !== "s") return;
+      chrome.runtime.sendMessage({
+        type: "gmgn-trade-alert",
+        side: trade.side === "b" ? "buy" : "sell",
+        time: formatExactTime(trade.ts),
+        eth: formatEth(trade.amount, false) + " ETH",
+        maker: trade.maker
+      });
+    });
   }
 
   function totals() {
@@ -538,7 +555,9 @@
       if (gen !== generation) return;
       var history = (json.data && json.data.history) || [];
       seenTrades = Math.max(seenTrades, history.length);
-      ingest(history);
+      var fresh = ingest(history);
+      notifyFresh(fresh);
+      alertsArmed = true;
       if (!backfillCursor && !historyDone && !historyPartial) backfillCursor = (json.data && json.data.next) || "";
       if (!backfillCursor && !historyPartial) historyDone = true;
       render();
@@ -648,6 +667,7 @@
     poolName = "";
     totalSupply = 0;
     tokenSymbol = "";
+    alertsArmed = false;
     loadCache(function () {
       if (gen !== generation) return;
       render();
