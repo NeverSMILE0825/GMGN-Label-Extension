@@ -25,3 +25,114 @@
   text-overflow: ellipsis;
   white-space: nowrap !important;
 }
+
+.gmgn-eth-card,
+.gmgn-eth-show {
+  position: fixed;
+  right: 16px;
+  bottom: 64px;
+  z-index: 2147483000;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.gmgn-eth-card {
+  width: 300px;
+  box-sizing: border-box;
+  padding: 10px 12px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 14, 18, 0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  color: #d7e0e6;
+}
+
+.gmgn-eth-card[hidden],
+.gmgn-eth-show[hidden] { display: none !important; }
+
+.gmgn-eth-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #9aabb6;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.gmgn-eth-hide,
+.gmgn-eth-show {
+  border: 0;
+  background: transparent;
+  color: #8ea0ac;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.gmgn-eth-show {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 154, 98, 0.45);
+  background: rgba(8, 14, 18, 0.94);
+  color: #ffb07a;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.gmgn-eth-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.gmgn-eth-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: #ff9a3c;
+  color: #1c1106;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.gmgn-eth-net {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.gmgn-eth-net.up { color: #3ddf7a; }
+.gmgn-eth-net.down { color: #ff5d6c; }
+
+.gmgn-eth-meta {
+  margin-top: 3px;
+  color: #c5d0d7;
+  font-size: 12px;
+}
+
+.gmgn-eth-note {
+  margin-top: 2px;
+  color: #6d7c86;
+  font-size: 11px;
+}
+
+.gmgn-eth-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8b9aa4;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.gmgn-eth-foot b {
+  color: #7fd4ff;
+  font-weight: 800;
+}
+
+.gmgn-eth-foot .gas b { color: #e7eef2; }
