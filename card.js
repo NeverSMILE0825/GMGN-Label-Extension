@@ -2,6 +2,7 @@
   var NATIVE_ETH = "0x0000000000000000000000000000000000000000";
   var WETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
   var MAX_PAGES = 500;
+  var CACHE_VERSION = 2;
   var walletMap = new Map();
   var trades = new Map();
   var hidden = false;
@@ -61,14 +62,15 @@
     (history || []).forEach(function (row) {
       if (!row || !row.id || trades.has(row.id)) return;
       if (!isEthQuote(row.quote_address)) return;
-      if (row.event !== "buy" && row.event !== "sell") return;
+      var side = row.event === "buy" ? "b" : row.event === "sell" ? "s" : row.event === "add" ? "a" : row.event === "remove" ? "r" : "";
+      if (!side) return;
       var amount = Number(row.quote_amount);
-      if (!isFinite(amount) || amount < 0) return;
+      if (!isFinite(amount) || amount < 0) amount = 0;
       var maker = GMGNTeam.normalizeAddress(row.maker);
       if (!maker) return;
       trades.set(row.id, {
         maker: maker,
-        side: row.event === "buy" ? "b" : "s",
+        side: side,
         amount: amount
       });
       added += 1;
@@ -82,14 +84,20 @@
     var sellEth = 0;
     var buys = 0;
     var sells = 0;
+    var adds = 0;
+    var removes = 0;
     trades.forEach(function (trade) {
       if (walletMap.has(trade.maker)) return;
       if (trade.side === "b") {
         buyEth += trade.amount;
         buys += 1;
-      } else {
+      } else if (trade.side === "s") {
         sellEth += trade.amount;
         sells += 1;
+      } else if (trade.side === "a") {
+        adds += 1;
+      } else if (trade.side === "r") {
+        removes += 1;
       }
     });
     return {
@@ -98,6 +106,8 @@
       net: buyEth - sellEth,
       buys: buys,
       sells: sells,
+      adds: adds,
+      removes: removes,
       trades: buys + sells
     };
   }
@@ -111,6 +121,7 @@
       '<div class="gmgn-eth-main"><span class="gmgn-eth-chip">ETH</span><strong class="gmgn-eth-net" id="gmgn-eth-net">—</strong></div>',
       '<div class="gmgn-eth-meta" id="gmgn-eth-stats"></div>',
       '<div class="gmgn-eth-meta" id="gmgn-eth-split"></div>',
+      '<div class="gmgn-eth-meta" id="gmgn-eth-liq"></div>',
       '<div class="gmgn-eth-note" id="gmgn-eth-note">Buys add, sells subtract. Full pair history.</div>',
       '<footer class="gmgn-eth-foot">',
       '<span>POOLED ETH <b id="gmgn-eth-pooled">—</b></span>',
@@ -140,6 +151,7 @@
     net.className = "gmgn-eth-net " + (stats.net < 0 ? "down" : "up");
     card.querySelector("#gmgn-eth-stats").textContent = formatCount(stats.trades) + " trades · " + formatCount(stats.buys) + " buys · " + formatCount(stats.sells) + " sells";
     card.querySelector("#gmgn-eth-split").textContent = "Buy " + formatEth(stats.buyEth, false) + " ETH · Sell " + formatEth(stats.sellEth, false) + " ETH";
+    card.querySelector("#gmgn-eth-liq").textContent = formatCount(stats.adds) + " adds · " + formatCount(stats.removes) + " removes";
     var note = card.querySelector("#gmgn-eth-note");
     if (!historyDone && !historyPartial) note.textContent = "Loading full history… " + formatCount(seenTrades) + " trades";
     else if (historyPartial) note.textContent = "Buys add, sells subtract. Latest " + formatCount(MAX_PAGES * 50) + " trades.";
@@ -174,6 +186,7 @@
       var payload = {};
       payload[cacheKey()] = {
         cursor: backfillCursor,
+        version: CACHE_VERSION,
         done: historyDone,
         partial: historyPartial,
         trades: rows
@@ -192,7 +205,7 @@
     local.get([key, "gmgnEthCardHidden"], function (data) {
       hidden = !!(data && data.gmgnEthCardHidden);
       var cached = data && data[key];
-      if (cached && cached.trades) {
+      if (cached && cached.version === CACHE_VERSION && cached.trades) {
         cached.trades.forEach(function (row) {
           trades.set(row[0], { maker: row[1], side: row[2], amount: row[3] });
         });
