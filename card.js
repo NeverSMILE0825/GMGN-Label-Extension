@@ -2,7 +2,7 @@
   var NATIVE_ETH = "0x0000000000000000000000000000000000000000";
   var WETH = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
   var MAX_PAGES = 500;
-  var CACHE_VERSION = 4;
+  var CACHE_VERSION = 5;
   var walletMap = new Map();
   var trades = new Map();
   var hidden = false;
@@ -22,6 +22,7 @@
   var saveTimer = 0;
   var showDetails = false;
   var totalSupply = 0;
+  var tokenSymbol = "";
   var detailsTimer = 0;
   var modal;
 
@@ -116,15 +117,33 @@
     return sign + "$" + trimFixed(abs, 3);
   }
 
-  function formatAge(ts) {
+  function formatExactTime(ts) {
     if (!ts) return "—";
-    var seconds = Math.max(0, Math.floor(Date.now() / 1000 - ts));
-    if (seconds < 60) return seconds + "s";
-    var minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return minutes + "m";
-    var hours = Math.floor(minutes / 60);
-    if (hours < 24) return hours + "h";
-    return Math.floor(hours / 24) + "d";
+    var date = new Date(ts * 1000);
+    if (!isFinite(date.getTime())) return "—";
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    function pad(value) { return value < 10 ? "0" + value : String(value); }
+    return months[date.getMonth()] + " " + date.getDate() + ", " + pad(date.getHours()) + ":" + pad(date.getMinutes()) + ":" + pad(date.getSeconds());
+  }
+
+  function formatExactEth(value, raw) {
+    var text = String(raw || "").trim();
+    if (text && isFinite(Number(text))) {
+      text = text.replace(/^[+]/, "").replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+      return text + " ETH";
+    }
+    if (value == null || !isFinite(value)) return "—";
+    if (value === 0) return "0 ETH";
+    text = Math.abs(value).toFixed(12).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+    return (value < 0 ? "-" : "") + text + " ETH";
+  }
+
+  function formatUsdAmount(value) {
+    if (value == null || !isFinite(value)) return "—";
+    var abs = Math.abs(value);
+    var digits = abs >= 1 ? 2 : abs >= 0.01 ? 3 : 4;
+    var text = abs.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    return (value < 0 ? "-$" : "$") + text;
   }
 
   function typeLabel(side) {
@@ -182,7 +201,8 @@
         price: finiteOrNull(row.price_usd),
         gasNative: gasNative == null || gasNative < 0 ? 0 : gasNative,
         gasUsd: finiteOrNull(row.gas_usd),
-        ts: Number(row.timestamp) || 0
+        ts: Number(row.timestamp) || 0,
+        quoteText: (side === "b" || side === "s") && ethQuote ? String(row.quote_amount || "") : ""
       });
       added += 1;
     });
@@ -198,9 +218,11 @@
     var adds = 0;
     var removes = 0;
     var gasEth = 0;
+    var gasUsd = 0;
     var unlabeled = 0;
     trades.forEach(function (trade) {
       gasEth += trade.gasNative || 0;
+      gasUsd += trade.gasUsd || 0;
       if (walletMap.has(trade.maker)) return;
       unlabeled += 1;
       if (trade.eth && trade.side === "b") {
@@ -225,6 +247,7 @@
       removes: removes,
       trades: buys + sells,
       gasEth: gasEth,
+      gasUsd: gasUsd,
       unlabeled: unlabeled
     };
   }
@@ -268,7 +291,7 @@
       '<header><span>Unlabeled trades</span><b id="gmgn-eth-detail-count"></b></header>',
       '<div class="gmgn-eth-table-wrap"><table>',
       "<thead><tr>",
-      "<th>Age</th><th>Type</th><th>MC</th><th>Amount</th><th>Total USD</th><th>Gas</th><th>Trader</th>",
+      "<th>Time</th><th>Type</th><th>MC</th><th id=\"gmgn-eth-amount-head\">Total</th><th>Total ETH</th><th>Gas</th><th>Trader</th>",
       "</tr></thead><tbody></tbody></table></div>",
       '<p class="gmgn-eth-detail-note" id="gmgn-eth-detail-note"></p>',
       "</div>"
@@ -301,15 +324,18 @@
     else if (!rows.length) note.textContent = "No unlabeled trades.";
     else if (!historyDone && !historyPartial) note.textContent = "Loading the rest of the pair history.";
     else note.textContent = "";
+    var amountHead = modal.querySelector("#gmgn-eth-amount-head");
+    amountHead.textContent = tokenSymbol ? "Total " + tokenSymbol : "Total";
     var html = rows.map(function (trade) {
       var kind = typeClass(trade.side);
       var href = "/eth/address/" + trade.maker;
+      var ethText = formatExactEth(trade.eth ? trade.amount : null, trade.quoteText);
       return "<tr>" +
-        "<td>" + formatAge(trade.ts) + "</td>" +
+        "<td>" + formatExactTime(trade.ts) + "</td>" +
         '<td class="' + kind + '">' + typeLabel(trade.side) + "</td>" +
         "<td>" + formatMc(trade.price) + "</td>" +
         "<td>" + formatAmount(trade.base) + "</td>" +
-        "<td>" + formatTotalUsd(trade.usd) + "</td>" +
+        '<td class="gmgn-eth-pair"><span>' + ethText + "</span><span class=\"sub\">" + formatTotalUsd(trade.usd) + "</span></td>" +
         "<td>" + formatGasUsd(trade.gasUsd) + "</td>" +
         '<td><a href="' + href + '">' + GMGNTeam.shortAddress(trade.maker) + "</a></td>" +
         "</tr>";
@@ -344,7 +370,7 @@
     else if (historyPartial) note.textContent = "Buys add, sells subtract. Latest " + formatCount(MAX_PAGES * 50) + " trades.";
     else note.textContent = "Buys add, sells subtract. Full pair history.";
     var spent = card.querySelector("#gmgn-eth-spent");
-    spent.textContent = formatEth(stats.gasEth, false) + " ETH";
+    spent.textContent = formatEth(stats.gasEth, false) + " ETH · " + formatUsdAmount(stats.gasUsd);
     spent.title = "Gas paid by every trade in this pair, including labeled wallets.";
     var details = card.querySelector("#gmgn-eth-details");
     details.checked = showDetails;
@@ -392,7 +418,8 @@
           trade.gasNative,
           trade.gasUsd,
           trade.ts,
-          trade.eth ? 1 : 0
+          trade.eth ? 1 : 0,
+          trade.quoteText || ""
         ]);
       });
       var payload = {};
@@ -430,7 +457,8 @@
             gasNative: row[7] || 0,
             gasUsd: row[8],
             ts: row[9] || 0,
-            eth: !!row[10]
+            eth: !!row[10],
+            quoteText: row[11] || ""
           });
         });
         backfillCursor = cached.cursor || "";
@@ -566,6 +594,7 @@
       var row = json && json.data && json.data[0];
       var supply = Number(row && (row.total_supply || row.circulating_supply));
       if (isFinite(supply) && supply > 0) totalSupply = supply;
+      tokenSymbol = String((row && row.symbol) || "").trim();
       render();
     }).catch(function () {});
   }
@@ -589,6 +618,7 @@
     pooledEth = null;
     poolName = "";
     totalSupply = 0;
+    tokenSymbol = "";
     loadCache(function () {
       if (gen !== generation) return;
       render();

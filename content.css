@@ -250,6 +250,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.gmgn-eth-pair .sub {
+  display: block;
+  color: #8b9aa4;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .gmgn-eth-dialog td.buy { color: #3ddf7a; font-weight: 700; }
 .gmgn-eth-dialog td.sell { color: #ff5d6c; font-weight: 700; }
 .gmgn-eth-dialog td.add { color: #7fd4ff; font-weight: 700; }
